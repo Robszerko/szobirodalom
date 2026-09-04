@@ -1,0 +1,1709 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SZÓBIRODALOM - Robi Mesterkiadás</title>
+    <style>
+        :root {
+            --bg-deep: #0b0f12;
+            --panel-bg: #151d22;
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --accent-gold: #f1c40f;
+            --accent-green: #2ecc71;
+            --accent-blue: #3498db;
+            --accent-red: #e74c3c;
+            --accent-purple: #9b59b6;
+            --accent-orange: #e67e22;
+            --tile-wood: #fffdf5;
+            --tile-grain: #f5ebd3;
+            --tile-border: #e6caa3;
+            --tile-shadow: #b39269;
+            --tile-text: #241306;
+
+            /* Scrabble Színek */
+            --c-3sz: #b71c1c; --c-2sz: #c2597f;
+            --c-3b: #1565c0;  --c-2b: #3b7cb4; --c-star: #d48b00;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-deep);
+            background-image: radial-gradient(#18242b 1px, transparent 1px), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><g fill="none" stroke="%23ffffff" stroke-width="1.2" stroke-opacity="0.03"><rect x="15" y="15" width="40" height="44" rx="4"/><text x="25" y="44" font-family="sans-serif" font-size="22" font-weight="bold" fill="%23ffffff" fill-opacity="0.03" stroke="none">A</text><rect x="90" y="35" width="40" height="44" rx="4" transform="rotate(12 110 57)"/><text x="102" y="66" font-family="sans-serif" font-size="22" font-weight="bold" fill="%23ffffff" fill-opacity="0.03" stroke="none" transform="rotate(12 110 57)">S</text></g></svg>');
+            background-size: 24px 24px, 160px 160px;
+            color: #ffffff;
+            margin: 0; padding: 8px;
+            display: flex; flex-direction: column; align-items: center;
+            touch-action: manipulation; -webkit-user-select: none; user-select: none;
+            overflow-x: hidden;
+        }
+
+        /* RESZPONZÍV KERET */
+        .app-shell {
+            width: 100%; max-width: 650px;
+            display: flex; flex-direction: column; align-items: center;
+            position: relative;
+        }
+
+        /* ROBBANÁS CANVAS */
+        #fx-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 9999;
+        }
+
+        /* KÉPERNYŐ RÁZKÓDÁS */
+        .shake { animation: shakeAnim 0.35s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shakeAnim {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(3px, -2px, 0); }
+            30%, 50%, 70% { transform: translate3d(-3px, 2px, 0); }
+            40%, 60% { transform: translate3d(2px, -1px, 0); }
+        }
+
+        /* 3D LAPKA MEGFORDULÁS ANIMÁCIÓ */
+        .flip-tile {
+            perspective: 800px;
+        }
+        .flip-tile.do-flip {
+            animation: flipAnim 0.6s ease-in-out forwards;
+        }
+        @keyframes flipAnim {
+            0% { transform: rotateY(0deg); }
+            50% { transform: rotateY(90deg) scale(1.1); }
+            100% { transform: rotateY(0deg) scale(1); }
+        }
+
+        /* =======================================================
+           FŐMENÜ / BELÉPÉSI KÉPERNYŐ
+           ======================================================= */
+        #menu-view {
+            width: 100%; display: flex; flex-direction: column; align-items: center;
+            padding: 10px 0 20px 0; z-index: 10;
+        }
+
+        .portal-header {
+            text-align: center; margin-bottom: 14px;
+        }
+        .portal-title {
+            font-size: 30px; margin: 0; font-weight: 900; letter-spacing: 2px;
+            background: linear-gradient(135deg, #f1c40f, #e67e22);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            text-shadow: 0 4px 15px rgba(241,196,15,0.2);
+        }
+        .portal-sub {
+            font-size: 12px; color: #8a9ba8; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px;
+        }
+
+        /* Játékos Statisztika Csík */
+        .player-stats-bar {
+            width: 100%; background: linear-gradient(145deg, #18232a, #11181d);
+            border: 1px solid var(--panel-border); border-radius: 8px;
+            padding: 10px 14px; display: flex; justify-content: space-around;
+            align-items: center; font-size: 12px; margin-bottom: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .stat-item { text-align: center; }
+        .stat-item strong { display: block; font-size: 16px; color: var(--accent-gold); }
+
+        /* Játék Választó Rács */
+        .game-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%;
+        }
+        @media (max-width: 480px) {
+            .game-grid { grid-template-columns: 1fr; }
+        }
+
+        .game-card {
+            background: linear-gradient(145deg, #182228, #11181d);
+            border: 1px solid var(--panel-border); border-radius: 10px;
+            padding: 12px; cursor: pointer; display: flex; flex-direction: column;
+            gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+            position: relative; overflow: hidden;
+        }
+        .game-card:hover {
+            transform: translateY(-3px); border-color: var(--accent-gold);
+            box-shadow: 0 8px 20px rgba(241,196,15,0.2);
+        }
+        .card-top { display: flex; align-items: center; gap: 10px; }
+        .card-icon {
+            font-size: 26px; width: 44px; height: 44px; border-radius: 8px;
+            background: rgba(255,255,255,0.04); display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.06);
+        }
+        .card-title { font-size: 14px; font-weight: bold; margin: 0; color: #ffffff; }
+        .card-tag { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: bold; display: inline-block; width: fit-content; }
+        .tag-blue { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+        .tag-green { background: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+        .tag-orange { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
+        .tag-purple { background: rgba(155, 89, 182, 0.2); color: #9b59b6; }
+        .card-desc { font-size: 11px; color: #8a9ba8; line-height: 1.35; margin: 0; }
+
+        /* =======================================================
+           JÁTÉK NÉZET ÉS KÖZÖS ELEMEK
+           ======================================================= */
+        #game-stage-view {
+            width: 100%; display: none; flex-direction: column; align-items: center;
+        }
+
+        .stage-nav {
+            width: 100%; display: flex; justify-content: space-between; align-items: center;
+            background: var(--panel-bg); padding: 8px 12px; border-radius: 8px;
+            border: 1px solid var(--panel-border); font-size: 12px; margin-bottom: 8px;
+            box-sizing: border-box;
+        }
+        .btn-home {
+            background: #e74c3c; border: none; color: white; padding: 5px 12px;
+            border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 11px;
+        }
+
+        .rule-card {
+            width: 100%; background: #12191f; border-left: 3px solid var(--accent-gold);
+            padding: 8px 12px; border-radius: 4px; font-size: 11px; line-height: 1.4;
+            color: #bdc3c7; margin-bottom: 8px; box-sizing: border-box;
+        }
+        .rule-card strong { color: var(--accent-gold); }
+
+        .game-screen {
+            width: 100%; display: none; flex-direction: column; align-items: center;
+        }
+
+        .preview-bar {
+            font-size: 20px; font-weight: 900; letter-spacing: 2px; height: 32px;
+            color: var(--accent-gold); display: flex; align-items: center; justify-content: center;
+            margin: 4px 0;
+        }
+
+        .controls-row {
+            display: flex; gap: 8px; width: 100%; justify-content: center; margin-top: 8px;
+        }
+        button.action-btn {
+            background: #27ae60; color: white; border: none; padding: 8px 14px;
+            border-radius: 6px; font-weight: bold; font-size: 12px; cursor: pointer;
+            box-shadow: 0 3px 0 #1e8449;
+        }
+        button.action-btn:active { transform: translateY(2px); box-shadow: none; }
+        button.hint-btn { background: #f39c12; box-shadow: 0 3px 0 #d68910; }
+        button.cancel-btn { background: #c0392b; box-shadow: 0 3px 0 #962d22; }
+
+        /* JÁTÉK SPECIFIKUS ELEMEK */
+        /* Szóról szóra */
+        .cw-container {
+            width: 100%; min-height: 150px; background: rgba(0,0,0,0.3); border-radius: 8px;
+            padding: 10px; box-sizing: border-box; display: flex; flex-direction: column;
+            gap: 4px; align-items: center; justify-content: center; margin-bottom: 6px;
+        }
+        .cw-row { display: flex; gap: 4px; }
+        .cw-cell {
+            width: 32px; height: 32px; background: #1c272e; border: 1px solid #34495e;
+            border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: bold; color: transparent;
+        }
+        .cw-cell.revealed {
+            background: linear-gradient(135deg, var(--tile-wood), var(--tile-grain));
+            color: var(--tile-text); border-color: var(--tile-border);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        }
+
+        .wheel-box {
+            width: 210px; height: 210px; position: relative; margin: 6px 0; touch-action: none;
+        }
+        .wheel-bg {
+            width: 100%; height: 100%; border-radius: 50%;
+            background: radial-gradient(circle, #222f36, #141c20); border: 3px solid #34495e;
+            position: absolute; box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+        }
+        #wheel-laser-svg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 2;
+        }
+        .wheel-node {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--tile-wood), #edd7b9);
+            border: 2px solid var(--tile-border); color: var(--tile-text);
+            font-size: 20px; font-weight: 900; display: flex; align-items: center;
+            justify-content: center; position: absolute; transform: translate(-50%, -50%);
+            cursor: pointer; z-index: 3; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .wheel-node.active {
+            background: var(--accent-gold); transform: translate(-50%, -50%) scale(1.15);
+            box-shadow: 0 0 15px var(--accent-gold);
+        }
+
+        /* 6x6 Rács (Zuhatag, Időfutam, Relax, Bányász) */
+        .board-6x6-wrap {
+            width: 100%; aspect-ratio: 1 / 1; background: #26150c;
+            border-radius: 10px; padding: 6px; box-sizing: border-box;
+            border: 1px solid #543322; box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        }
+        .grid-6x6 {
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+            width: 100%; height: 100%;
+        }
+        .tile-6x6 {
+            background: linear-gradient(135deg, var(--tile-wood), var(--tile-grain));
+            border-radius: 5px; color: var(--tile-text); display: flex;
+            align-items: center; justify-content: center; font-size: clamp(16px, 4vw, 22px);
+            font-weight: bold; position: relative; cursor: pointer;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+        }
+        .tile-6x6.is-bomb { background: #e74c3c !important; color: white !important; }
+        .tile-6x6.is-bomb::before { content: '💣'; position: absolute; top: 2px; left: 2px; font-size: 8px; }
+        .tile-6x6.is-ice { background: #d0f0fd !important; }
+        .tile-6x6.is-ice::before { content: '❄️'; position: absolute; top: 2px; left: 2px; font-size: 8px; }
+        .tile-6x6.is-gold { background: linear-gradient(135deg, #fff3b0, #f1c40f) !important; color: #4a3800 !important; }
+        .tile-6x6.is-gold::before { content: '2×'; position: absolute; top: 1px; left: 2px; font-size: 8px; font-weight: 900; }
+        .tile-6x6.is-rock { background: linear-gradient(135deg, #535c61, #2f363a) !important; color: #bdc3c7 !important; }
+        .tile-6x6.is-rock::before { content: '🪨'; position: absolute; opacity: 0.3; }
+        .tile-6x6.selected { background: #ffeaa7 !important; transform: scale(0.92); outline: 2px solid #f39c12; }
+        .tile-6x6.selected-valid { background: #d4edda !important; outline: 2px solid #28a745; }
+
+        /* Időfutam / Relax Szócsík */
+        .quest-target-strip {
+            width: 100%; background: #131f28; border: 1px solid #34495e; border-radius: 6px;
+            padding: 6px 10px; margin-bottom: 6px; box-sizing: border-box; display: flex;
+            gap: 6px; flex-wrap: wrap; align-items: center; font-size: 11px;
+        }
+        .quest-pill {
+            background: rgba(255,255,255,0.08); padding: 3px 8px; border-radius: 10px;
+            font-weight: bold; letter-spacing: 1px;
+        }
+        .quest-pill.done { background: #27ae60; color: #0b3117; text-decoration: line-through; }
+        .timer-meter {
+            width: 100%; height: 5px; background: #2c3e50; border-radius: 3px; overflow: hidden; margin-top: 4px;
+        }
+        .timer-fill { width: 100%; height: 100%; background: #2ecc71; transition: width 0.2s linear; }
+
+        /* Szóbogozó Rush Eredmény Kétoszlopos */
+        .rush-columns {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: 8px;
+        }
+        .rush-box {
+            background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px; min-height: 110px;
+            max-height: 170px; overflow-y: auto; font-size: 11px;
+        }
+
+        /* Szópiramis */
+        .pyramid-wrap { display: flex; flex-direction: column; gap: 4px; align-items: center; margin: 10px 0; }
+        .pyr-row { display: flex; gap: 4px; }
+        .pyr-cell {
+            width: 32px; height: 32px; background: #1a252c; border: 1px solid #34495e;
+            border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: bold;
+        }
+        .pyr-cell.active { border-color: var(--accent-gold); box-shadow: 0 0 8px var(--accent-gold); }
+        .pyr-cell.done { background: #27ae60; border-color: #2ecc71; }
+
+        /* Wordle */
+        .wordle-grid { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+        .w-row { display: flex; gap: 5px; }
+        .w-box {
+            width: 42px; height: 42px; border: 2px solid #34495e; border-radius: 6px;
+            display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold;
+        }
+        .w-box.correct { background: #27ae60; border-color: #27ae60; }
+        .w-box.present { background: #f39c12; border-color: #f39c12; }
+        .w-box.absent  { background: #2c3e50; border-color: #2c3e50; color: #7f8c8d; }
+
+        /* Scrabble */
+        #sc-board {
+            display: grid; grid-template-columns: repeat(15, 1fr); gap: 1.5px;
+            width: 100%; aspect-ratio: 1 / 1; background: #2c170e; padding: 4px;
+            border-radius: 6px; box-sizing: border-box;
+        }
+        .sc-c {
+            background: #443730; display: flex; align-items: center; justify-content: center;
+            font-size: clamp(6px, 1.6vw, 9px); font-weight: 800; color: rgba(255,255,255,0.3);
+            position: relative; cursor: pointer;
+        }
+        .sc-c.sz3 { background: var(--c-3sz); color: white; }
+        .sc-c.sz2 { background: var(--c-2sz); color: white; }
+        .sc-c.b3  { background: var(--c-3b);  color: white; }
+        .sc-c.b2  { background: var(--c-2b);  color: white; }
+        .sc-c.star{ background: var(--c-star); color: white; font-size: 11px; }
+        .sc-c.cursor-active::after { content: attr(data-arrow); position: absolute; font-size: 13px; color: #2ecc71; font-weight: 900; }
+
+        .sc-rack {
+            display: flex; gap: 6px; background: #472d24; padding: 6px 12px; border-radius: 6px;
+            margin: 6px 0; width: 100%; justify-content: center; box-sizing: border-box;
+        }
+        .sc-tile {
+            width: 36px; height: 40px; background: var(--tile-wood); color: var(--tile-text);
+            border-radius: 4px; font-size: 16px; font-weight: bold; display: flex;
+            align-items: center; justify-content: center; cursor: pointer; position: relative;
+        }
+        .sc-tile .p { position: absolute; bottom: 1px; right: 2px; font-size: 7px; color: #7a4b27; }
+
+        /* Névjegy Réztábla */
+        .creator-badge {
+            margin-top: 14px; background: linear-gradient(135deg, #7c5828, #4e3516);
+            border: 1px solid #d4af37; padding: 6px 16px; border-radius: 6px;
+            color: #fff2c2; font-weight: bold; font-size: 11px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="fx-canvas"></canvas>
+
+    <div class="app-shell">
+        
+        <!-- =======================================================
+             1. FŐMENÜ / BELÉPÉSI KÉPERNYŐ
+             ======================================================= -->
+        <div id="menu-view">
+            <div class="portal-header">
+                <h1 class="portal-title">SZÓBIRODALOM</h1>
+                <div class="portal-sub">Prémium Magyar Szójáték Központ</div>
+            </div>
+
+            <div class="player-stats-bar">
+                <div class="stat-item">
+                    <span style="color:#8a9ba8;">Összpontszám</span>
+                    <strong id="stat-global-score">0</strong>
+                </div>
+                <div class="stat-item">
+                    <span style="color:#8a9ba8;">Csillagok</span>
+                    <strong id="stat-stars">0 / 150</strong>
+                </div>
+                <div class="stat-item">
+                    <span style="color:#8a9ba8;">Szótár méret</span>
+                    <strong id="stat-words" style="color:#2ecc71;">Betöltés...</strong>
+                </div>
+            </div>
+
+            <!-- JÁTÉKOK VÁLASZTÓ RÁCSA -->
+            <div class="game-grid">
+                <!-- 1. Szóról szóra -->
+                <div class="game-card" onclick="launchGame('szorolszora')">
+                    <div class="card-top">
+                        <div class="card-icon">🔠</div>
+                        <div>
+                            <h3 class="card-title">Szóról Szóra Deluxe</h3>
+                            <span class="card-tag tag-gold">50 PÁLYA • MENTÉS</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Keresztrejtvény + szabadon összeköthető szóvirág tárcsa. Nem akad el a vonal!</p>
+                </div>
+
+                <!-- 2. Időfutam -->
+                <div class="game-card" onclick="launchGame('idofutam')">
+                    <div class="card-top">
+                        <div class="card-icon">⏱️</div>
+                        <div>
+                            <h3 class="card-title">Időfutam Kaland</h3>
+                            <span class="card-tag tag-blue">50 PÁLYA • IDŐVERSENY</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Garantáltan összefüggő szavak a táblán! Keresd meg őket, nyerj időbónuszt!</p>
+                </div>
+
+                <!-- 3. Relax -->
+                <div class="game-card" onclick="launchGame('relax')">
+                    <div class="card-top">
+                        <div class="card-icon">🧘</div>
+                        <div>
+                            <h3 class="card-title">Relax Csillagvadász</h3>
+                            <span class="card-tag tag-green">50 PÁLYA • NYUGODT</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Stresszmentes agytorna. Gyűjts csillagokat a felhőbe zárt 51. szint feloldásához!</p>
+                </div>
+
+                <!-- 4. Taktikai zuhatag -->
+                <div class="game-card" onclick="launchGame('zuhatag')">
+                    <div class="card-top">
+                        <div class="card-icon">💥</div>
+                        <div>
+                            <h3 class="card-title">Taktikai Zuhatag</h3>
+                            <span class="card-tag tag-orange">BOMBÁK • JÉGTÖRÉS</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">6×6-os mátrix bombákkal, jéggel, 2× aranykristállyal és küldetésekkel.</p>
+                </div>
+
+                <!-- 5. Szóbányász -->
+                <div class="game-card" onclick="launchGame('banyasz')">
+                    <div class="card-top">
+                        <div class="card-icon">⛏️</div>
+                        <div>
+                            <h3 class="card-title">Szó-Bányász: Mélyfúrás</h3>
+                            <span class="card-tag tag-purple">SZIKLAZÚZÁS • KINCS</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Alkoss szavakat a sziklák mellett, zúzd szét a rétegeket és ásd ki a ládát!</p>
+                </div>
+
+                <!-- 6. Szóbogozó Rush -->
+                <div class="game-card" onclick="launchGame('rush')">
+                    <div class="card-top">
+                        <div class="card-icon">⚡</div>
+                        <div>
+                            <h3 class="card-title">Szóbogozó Rush</h3>
+                            <span class="card-tag tag-red">60 MP • ÖSSZES MEGOLDÁS</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Találati lista, és lejáratkor más színnel az ÖSSZES lehetséges szó kiírása!</p>
+                </div>
+
+                <!-- 7. Szópiramis -->
+                <div class="game-card" onclick="launchGame('piramis')">
+                    <div class="card-top">
+                        <div class="card-icon">🔺</div>
+                        <div>
+                            <h3 class="card-title">Nagy Szópiramis</h3>
+                            <span class="card-tag tag-gold">1 BETŰ CSERE • SÚGÓ</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Pontosan 1 betű megváltoztatása soronként. 60/30 mp automatikus betűsúgóval.</p>
+                </div>
+
+                <!-- 8. Wordle Mester -->
+                <div class="game-card" onclick="launchGame('wordle')">
+                    <div class="card-top">
+                        <div class="card-icon">🟩</div>
+                        <div>
+                            <h3 class="card-title">Szófejtő Mester</h3>
+                            <span class="card-tag tag-green">3D FORGÁS • WORDLE</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Titkos 5 betűs szó megfejtése 6 lépésből, zöld reveal animációval és pontokkal.</p>
+                </div>
+
+                <!-- 9. Klasszikus Scrabble -->
+                <div class="game-card" onclick="launchGame('scrabble')" style="grid-column: 1 / -1;">
+                    <div class="card-top">
+                        <div class="card-icon">🪵</div>
+                        <div>
+                            <h3 class="card-title">Klasszikus Scrabble (15×15)</h3>
+                            <span class="card-tag tag-orange">HIVATALOS SZABÁLYOK • 3SZ/2SZ</span>
+                        </div>
+                    </div>
+                    <p class="card-desc">Hivatalos fa tábla, szorzók, lapkatartó, billentyűzet és drag-and-drop támogatás.</p>
+                </div>
+            </div>
+
+            <div class="creator-badge">
+                <span>✨ Készítette: Robi</span>
+            </div>
+        </div>
+
+        <!-- =======================================================
+             2. JÁTÉKTÉR NÉZET (AKTÍV JÁTÉKOK KÖZÖS KERETE)
+             ======================================================= -->
+        <div id="game-stage-view">
+            <div class="stage-nav">
+                <button class="btn-home" onclick="returnToHub()">🏠 Főmenü</button>
+                <span id="stage-title" style="font-weight:bold; color:var(--accent-gold);">Játék</span>
+                <span id="stage-score-info">Pont: <strong id="stage-points" style="color:#2ecc71;">0</strong></span>
+            </div>
+
+            <!-- JÁTÉK 1: SZÓRÓL SZÓRA -->
+            <div class="game-screen" id="screen-szorolszora">
+                <div class="rule-card">
+                    <strong>📖 Szabályzat:</strong> Húzd végig az ujjad vagy az egeret az alsó tárcsa betűin tetszőleges sorrendben! A kitalált szavak megelevenedve beugranak a keresztrejtvénybe. 50 egyre nehezedő pálya, ami automatikusan mentődik (LocalStorage)! Ha elakadsz, használd a 💡 Súgót!
+                </div>
+                <div style="width:100%; display:flex; justify-content:space-between; font-size:11px; margin-bottom:4px;">
+                    <span>Pálya: <strong id="sz-level-txt" style="color:var(--accent-gold);">1 / 50</strong></span>
+                    <span>Ciklus: <strong id="sz-cycle-txt">1</strong></span>
+                    <span>⭐ Csillagok: <strong id="sz-stars-txt">0</strong></span>
+                </div>
+                <div class="cw-container" id="sz-cw-box"></div>
+                <div class="preview-bar" id="sz-preview">HÚZD A BETŰKET</div>
+                <div class="wheel-box" id="sz-wheel-box">
+                    <div class="wheel-bg"></div>
+                    <svg id="wheel-laser-svg"></svg>
+                    <div id="sz-wheel-letters"></div>
+                </div>
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="useCrosswordHint()">💡 Súgó (Betű felfedése)</button>
+                </div>
+            </div>
+
+            <!-- JÁTÉK 2: IDŐFUTAM & 3: RELAX (KÖZÖS MOTOR GARANTÁLT ÖSSZEKÖTÉSSEL) -->
+            <div class="game-screen" id="screen-quest">
+                <div class="rule-card" id="quest-rule-card">
+                    <strong>📖 Szabályzat:</strong> Keresd meg a feladott cél-szavakat a 6×6-os táblán az érintkező betűk összekötésével (akár átlósan is)! A szavak GARANTÁLTAN összefüggnek a táblán. Időfutamban minden szó extra időt ad a hossza alapján, Relax módban idő nélkül gyűjthetsz csillagokat!
+                </div>
+                <div class="quest-target-strip" id="quest-target-strip"></div>
+                <div class="timer-meter" id="quest-timer-meter"><div class="timer-fill" id="quest-timer-fill"></div></div>
+                <div class="preview-bar" id="quest-preview">HÚZZ EGY SZÓT</div>
+                <div class="board-6x6-wrap" id="quest-board-wrap">
+                    <div class="grid-6x6" id="quest-grid"></div>
+                </div>
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="useQuestHint()">💡 Súgó (Cél-szó megmutatása)</button>
+                    <button class="action-btn" onclick="shuffleQuestBoard()">🌀 Újrakeverés</button>
+                </div>
+            </div>
+
+            <!-- JÁTÉK 4: TAKTIKAI ZUHATAG & 5: SZÓ-BÁNYÁSZ -->
+            <div class="game-screen" id="screen-zuhatag">
+                <div class="rule-card" id="zuh-rule-card">
+                    <strong>📖 Szabályzat:</strong> Alkoss érvényes szavakat! 5+ betűs szóból 💣 <strong>Bomba</strong> születik, ami berobbanva 3×3-at tisztít meg. Olvaszd ki a ❄️ <strong>Jégkockákat</strong> dupla pontért! Bányász módban zúzd szét a sziklákat a mélyben rejlő kincsért!
+                </div>
+                <div class="preview-bar" id="zuh-preview">HÚZZ EGY SZÓT</div>
+                <div class="board-6x6-wrap" id="zuh-board-wrap">
+                    <div class="grid-6x6" id="zuh-grid"></div>
+                </div>
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="useZuhatagRadar()">💡 Szó-Radar</button>
+                    <button class="action-btn" onclick="shuffleZuhatag()">🌀 Keverés</button>
+                </div>
+            </div>
+
+            <!-- JÁTÉK 6: SZÓBOGOZÓ RUSH -->
+            <div class="game-screen" id="screen-rush">
+                <div class="rule-card">
+                    <strong>📖 Szabályzat:</strong> Kapsz 6 betűt és 60 másodpercet! Alkoss minél több szót! Kétszer ugyanazért a szóért nem jár pont. <strong>Lejáratkor a játék narancssárgával kilistázza az ÖSSZES lehetséges szót</strong>, amit a 150 000 szavas szótárból ki lehetett volna rakni!
+                </div>
+                <div style="font-size:13px; font-weight:bold; margin-bottom:6px;">
+                    Idő: <span id="rush-sec" style="color:#e74c3c; font-size:16px;">60</span> mp | Találatok: <span id="rush-count" style="color:#2ecc71;">0</span>
+                </div>
+                <div style="font-size:20px; letter-spacing:6px; font-weight:bold; background:#182329; padding:6px 18px; border-radius:6px; border:1px solid #34495e; margin-bottom:6px;" id="rush-letters">K A P U B A</div>
+                <input type="text" id="rush-input" placeholder="SZÓ ÉS ENTER..." style="width:75%; padding:8px; text-align:center; text-transform:uppercase; font-size:15px; border-radius:5px; border:1px solid #34495e; background:#12181d; color:white;" onkeydown="handleRushKey(event)">
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="useRushHint()">💡 Súgó (Szókezdés)</button>
+                    <button class="action-btn" onclick="startRushRound()">Új Kör</button>
+                </div>
+                <div class="rush-columns">
+                    <div class="rush-box">
+                        <h4 style="color:#2ecc71; margin:0 0 4px 0;">Találataid:</h4>
+                        <div id="rush-found-list"></div>
+                    </div>
+                    <div class="rush-box">
+                        <h4 style="color:#e67e22; margin:0 0 4px 0;">Kihagyott szavak:</h4>
+                        <div id="rush-missed-list" style="color:#bdc3c7;">Az idő lejárta után ide kerülnek!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JÁTÉK 7: SZÓPIRAMIS -->
+            <div class="game-screen" id="screen-piramis">
+                <div class="rule-card">
+                    <strong>📖 Szabályzat:</strong> Minden sorban pontosan <strong>EGYETLEN betűt kell megváltoztatnod</strong> az előző szóhoz képest! Ha 1 percig elakadsz, a játék automatikusan felfedi az első betűt, majd 30 mp-enként a többit fokozatos pontlevonással!
+                </div>
+                <div style="font-size:11px; margin-bottom:6px; color:#8a9ba8;">
+                    Automatikus Súgó: <strong id="pyr-timer-txt" style="color:var(--accent-gold);">60</strong> mp | Érték: <strong id="pyr-pts-txt" style="color:#2ecc71;">100 pont</strong>
+                </div>
+                <div class="pyramid-wrap" id="pyr-box"></div>
+                <input type="text" id="pyr-input" placeholder="KÖVETKEZŐ SZÓ ÉS ENTER..." style="width:75%; padding:8px; text-align:center; text-transform:uppercase; font-size:15px; border-radius:5px; border:1px solid #34495e; background:#12181d; color:white;" onkeydown="handlePyramidKey(event)">
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="triggerPyramidHint()">💡 Betű felfedése most (-20 pont)</button>
+                </div>
+            </div>
+
+            <!-- JÁTÉK 8: WORDLE MESTER -->
+            <div class="game-screen" id="screen-wordle">
+                <div class="rule-card">
+                    <strong>📖 Szabályzat:</strong> Találd ki a titkos 5 betűs szót 6 próbálkozásból a 150 000 szavas szótárból! A betűk 3D-ben megfordulnak: 🟩 Zöld = Jó helyen van, 🟨 Sárga = Benne van de máshol, ⬛ Szürke = Nincs benne.
+                </div>
+                <div class="wordle-grid" id="w-grid"></div>
+                <input type="text" id="w-input" maxlength="5" placeholder="5 BETŰS TIPP ÉS ENTER..." style="width:75%; padding:8px; text-align:center; text-transform:uppercase; font-size:15px; border-radius:5px; border:1px solid #34495e; background:#12181d; color:white;" onkeydown="handleWordleKey(event)">
+                <div class="controls-row">
+                    <button class="action-btn hint-btn" onclick="useWordleHint()">💡 Súgó (Benne lévő betű)</button>
+                </div>
+                <div id="w-msg" style="margin-top:6px; font-weight:bold; font-size:12px; text-align:center;"></div>
+            </div>
+
+            <!-- JÁTÉK 9: KLASSZIKUS SCRABBLE -->
+            <div class="game-screen" id="screen-scrabble">
+                <div class="rule-card">
+                    <strong>📖 Szabályzat:</strong> Hivatalos 15×15 fa tábla (3SZ, 2SZ, 3B, 2B, ★). Kattints az üres mezőre a kezdőpontért és az irányért (➡️ vagy ⬇️), majd írj billentyűzetről vagy kattints a lapkáidra! Keresztszavakat is ellenőriz.
+                </div>
+                <div id="sc-board"></div>
+                <div class="sc-rack" id="sc-rack"></div>
+                <div class="controls-row">
+                    <button class="action-btn" onclick="commitScrabble()">Szó lerakása</button>
+                    <button class="action-btn cancel-btn" onclick="recallScrabble()">Visszahívás</button>
+                    <button class="action-btn hint-btn" onclick="useScrabbleHint()">💡 Súgó</button>
+                </div>
+                <div id="sc-msg" style="margin-top:6px; font-weight:bold; font-size:12px; text-align:center;"></div>
+            </div>
+
+            <div class="creator-badge">
+                <span>✨ Készítette: Robi</span>
+            </div>
+        </div>
+
+    </div>
+
+<script>
+    // =========================================================================
+    // 🔊 WEB AUDIO SZINTETIZÁTOR (ÉLETHŰ FA HANGOK)
+    // =========================================================================
+    let audioCtx = null;
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playTick() {
+        try {
+            initAudio(); const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(460, now);
+            osc.frequency.exponentialRampToValueAtTime(140, now + 0.03);
+            gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.03);
+        } catch(e){}
+    }
+
+    function playFanfare() {
+        try {
+            initAudio();
+            [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                const now = audioCtx.currentTime + i * 0.06;
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(f, now);
+                gain.gain.setValueAtTime(0.25, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.3);
+            });
+        } catch(e){}
+    }
+
+    function playBombSound() {
+        try {
+            initAudio(); const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(170, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.35);
+            gain.gain.setValueAtTime(0.6, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 0.35);
+        } catch(e){}
+    }
+
+    // =========================================================================
+    // 🎆 FIZIKAI TŰZIJÁTÉK RÉSZECSKEROBBANÁS (CANVAS)
+    // =========================================================================
+    const canvas = document.getElementById('fx-canvas');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.onresize = resizeCanvas;
+    resizeCanvas();
+
+    function triggerExplosion(x, y, isBig = false) {
+        const count = isBig ? 70 : 35;
+        const colors = ['#f1c40f', '#2ecc71', '#e74c3c', '#ffffff', '#3498db', '#9b59b6'];
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * (isBig ? 12 : 7) + 2;
+            particles.push({
+                x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                radius: Math.random() * 4 + 2,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                alpha: 1, decay: Math.random() * 0.02 + 0.015
+            });
+        }
+    }
+
+    function triggerScreenShake(containerId) {
+        const el = document.getElementById(containerId);
+        if (el) {
+            el.classList.remove('shake'); void el.offsetWidth;
+            el.classList.add('shake');
+            setTimeout(() => el.classList.remove('shake'), 350);
+        }
+    }
+
+    function animateParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.alpha -= p.decay;
+            if (p.alpha <= 0) { particles.splice(i, 1); continue; }
+            ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.color;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+        requestAnimationFrame(animateParticles);
+    }
+    requestAnimationFrame(animateParticles);
+
+    // =========================================================================
+    // SZÓTÁR ÉS GLOBÁLIS STATISZTIKA
+    // =========================================================================
+    const DICTIONARY_URLS = [
+        "https://gist.githubusercontent.com/Konstantinusz/f9517357e46fa827c3736031ac8d01c7/raw/magyar-szavak.txt",
+        "https://cdn.jsdelivr.net/gh/titoBouzout/Dictionaries@master/Hungarian.txt"
+    ];
+    const MY_GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1dMvW1K9dqc-Eg6QXkOa8acRJLNsd5_xMUBCokvXJ6Is/edit?usp=sharing";
+
+    let dictionary = new Set();
+    let globalScore = parseInt(localStorage.getItem("robi_global_score") || "0");
+    let totalStars = parseInt(localStorage.getItem("robi_total_stars") || "0");
+
+    function addScore(pts) {
+        globalScore += pts;
+        localStorage.setItem("robi_global_score", globalScore);
+        document.getElementById('stat-global-score').innerText = globalScore;
+        document.getElementById('stage-points').innerText = globalScore;
+    }
+
+    function addStars(count) {
+        totalStars += count;
+        localStorage.setItem("robi_total_stars", totalStars);
+        document.getElementById('stat-stars').innerText = `${totalStars} / 150`;
+    }
+
+    // =========================================================================
+    // FŐMENÜ ÉS JÁTÉKOK KÖZÖTTI NAVIGÁCIÓ
+    // =========================================================================
+    let activeGameId = null;
+
+    function launchGame(gameId) {
+        activeGameId = gameId;
+        document.getElementById('menu-view').style.display = 'none';
+        document.getElementById('game-stage-view').style.display = 'flex';
+
+        // Minden játék képernyő elrejtése
+        document.querySelectorAll('.game-screen').forEach(el => el.style.display = 'none');
+
+        const titleMap = {
+            szorolszora: "Szóról Szóra (50 Pálya)",
+            idofutam: "Időfutam Kaland (50 Pálya)",
+            relax: "Relax Csillagvadász (50 Pálya)",
+            zuhatag: "Taktikai Zuhatag Deluxe",
+            banyasz: "Szó-Bányász: Mélyfúrás",
+            rush: "Szóbogozó Rush (60 mp)",
+            piramis: "Nagy Szópiramis",
+            wordle: "Szófejtő Mester (Wordle)",
+            scrabble: "Klasszikus Scrabble (15×15)"
+        };
+        document.getElementById('stage-title').innerText = titleMap[gameId] || "Játék";
+
+        // Adott játék inicializálása
+        if (gameId === 'szorolszora') {
+            document.getElementById('screen-szorolszora').style.display = 'flex';
+            initSzorolSzora();
+        } else if (gameId === 'idofutam' || gameId === 'relax') {
+            document.getElementById('screen-quest').style.display = 'flex';
+            initQuestGame(gameId);
+        } else if (gameId === 'zuhatag' || gameId === 'banyasz') {
+            document.getElementById('screen-zuhatag').style.display = 'flex';
+            initZuhatagGame(gameId);
+        } else if (gameId === 'rush') {
+            document.getElementById('screen-rush').style.display = 'flex';
+            startRushRound();
+        } else if (gameId === 'piramis') {
+            document.getElementById('screen-piramis').style.display = 'flex';
+            initPyramid();
+        } else if (gameId === 'wordle') {
+            document.getElementById('screen-wordle').style.display = 'flex';
+            initWordle();
+        } else if (gameId === 'scrabble') {
+            document.getElementById('screen-scrabble').style.display = 'flex';
+            initScrabble();
+        }
+    }
+
+    function returnToHub() {
+        // Töröljük az esetleges futó időzítőket
+        if (questTimerInt) clearInterval(questTimerInt);
+        if (rushInt) clearInterval(rushInt);
+        if (pyrInt) clearInterval(pyrInt);
+
+        document.getElementById('game-stage-view').style.display = 'none';
+        document.getElementById('menu-view').style.display = 'flex';
+        document.getElementById('stat-global-score').innerText = globalScore;
+        document.getElementById('stat-stars').innerText = `${totalStars} / 150`;
+    }
+
+    // =========================================================================
+    // 1. JÁTÉK: SZÓRÓL SZÓRA (50 PÁLYA + TÁRCSA + LOCALSTORAGE)
+    // =========================================================================
+    const CW_50_PACK = [
+        { w: ["FA", "FAL", "LÓ"], l: ["F", "A", "L", "Ó"] },
+        { w: ["HÁZ", "ÁR", "ZÁR"], l: ["H", "Á", "Z", "R"] },
+        { w: ["KAPA", "PÁK", "APÓ"], l: ["K", "A", "P", "Á", "Ó"] },
+        { w: ["MADÁR", "ÁR", "DARA"], l: ["M", "A", "D", "Á", "R"] },
+        { w: ["KERT", "RÉT", "TÉL"], l: ["K", "E", "R", "T", "É", "L"] },
+        { w: ["ASZTAL", "TÁL", "SZALAT"], l: ["A", "S", "Z", "T", "A", "L"] },
+        { w: ["ABLAK", "LAK", "BAK"], l: ["A", "B", "L", "A", "K"] },
+        { w: ["VIRÁG", "ÁR", "ÁG"], l: ["V", "I", "R", "Á", "G"] },
+        { w: ["REPÜL", "PÜRE", "ÉR"], l: ["R", "E", "P", "Ü", "L"] },
+        { w: ["KÖNYV", "ÖV", "NYÖV"], l: ["K", "Ö", "N", "Y", "V"] }
+    ];
+
+    let szLevel = parseInt(localStorage.getItem("robi_sz_lvl") || "1");
+    let szCycle = parseInt(localStorage.getItem("robi_sz_cyc") || "1");
+    let szSolved = new Set();
+    let szLetters = [];
+    let szSelected = [];
+    let isDraggingSz = false;
+
+    function initSzorolSzora() {
+        document.getElementById('sz-level-txt').innerText = `${szLevel} / 50`;
+        document.getElementById('sz-cycle-txt').innerText = szCycle;
+        document.getElementById('sz-stars-txt').innerText = totalStars;
+
+        const data = CW_50_PACK[(szLevel - 1) % CW_50_PACK.length];
+        szLetters = data.l;
+        szSolved = new Set();
+
+        // Keresztrejtvény rajzolás
+        const box = document.getElementById('sz-cw-box');
+        box.innerHTML = '';
+        data.w.forEach(word => {
+            const row = document.createElement('div'); row.className = 'cw-row';
+            row.dataset.w = word;
+            for (let c of word) {
+                const cell = document.createElement('div'); cell.className = 'cw-cell flip-tile';
+                cell.innerText = c; row.appendChild(cell);
+            }
+            box.appendChild(row);
+        });
+
+        // Tárcsa rajzolás
+        const cont = document.getElementById('sz-wheel-letters');
+        cont.innerHTML = '';
+        const R = 72, cx = 105, cy = 105;
+        szLetters.forEach((letter, i) => {
+            const angle = (i / szLetters.length) * 2 * Math.PI - Math.PI / 2;
+            const x = cx + R * Math.cos(angle), y = cy + R * Math.sin(angle);
+            const node = document.createElement('div'); node.className = 'wheel-node';
+            node.style.left = `${x}px`; node.style.top = `${y}px`;
+            node.innerText = letter; node.dataset.idx = i;
+            cont.appendChild(node);
+        });
+    }
+
+    const szWheelBox = document.getElementById('sz-wheel-box');
+    szWheelBox.onpointerdown = (e) => {
+        isDraggingSz = true; szSelected = [];
+        checkSzHit(e.clientX, e.clientY);
+    };
+    window.addEventListener('pointermove', (e) => {
+        if (!isDraggingSz) return;
+        checkSzHit(e.clientX, e.clientY);
+        drawSzLaser(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointerup', () => {
+        if (!isDraggingSz) return;
+        isDraggingSz = false;
+        commitSzWord();
+        document.getElementById('wheel-laser-svg').innerHTML = '';
+        document.querySelectorAll('.wheel-node').forEach(n => n.classList.remove('active'));
+    });
+
+    function checkSzHit(x, y) {
+        document.querySelectorAll('.wheel-node').forEach(n => {
+            const r = n.getBoundingClientRect();
+            if (Math.hypot(x - (r.left + r.width/2), y - (r.top + r.height/2)) < 26) {
+                const idx = parseInt(n.dataset.idx);
+                if (!szSelected.includes(idx)) {
+                    szSelected.push(idx); n.classList.add('active');
+                    playTick();
+                    document.getElementById('sz-preview').innerText = szSelected.map(i => szLetters[i]).join('');
+                }
+            }
+        });
+    }
+
+    function drawSzLaser(cx, cy) {
+        const svg = document.getElementById('wheel-laser-svg');
+        const boxRect = szWheelBox.getBoundingClientRect();
+        let html = '';
+        for (let i = 0; i < szSelected.length - 1; i++) {
+            const p1 = getSzNodePos(szSelected[i]), p2 = getSzNodePos(szSelected[i+1]);
+            html += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#f1c40f" stroke-width="5" stroke-linecap="round"/>`;
+        }
+        if (szSelected.length > 0) {
+            const last = getSzNodePos(szSelected[szSelected.length - 1]);
+            html += `<line x1="${last.x}" y1="${last.y}" x2="${cx - boxRect.left}" y2="${cy - boxRect.top}" stroke="rgba(241,196,15,0.4)" stroke-width="4" stroke-linecap="round"/>`;
+        }
+        svg.innerHTML = html;
+    }
+
+    function getSzNodePos(idx) {
+        const el = document.querySelectorAll('.wheel-node')[idx];
+        const r = el.getBoundingClientRect(), pr = szWheelBox.getBoundingClientRect();
+        return { x: r.left + r.width/2 - pr.left, y: r.top + r.height/2 - pr.top };
+    }
+
+    function commitSzWord() {
+        const word = szSelected.map(i => szLetters[i]).join('');
+        const data = CW_50_PACK[(szLevel - 1) % CW_50_PACK.length];
+        if (data.w.includes(word) && !szSolved.has(word)) {
+            szSolved.add(word);
+            playFanfare();
+            addScore(word.length * 10);
+
+            // 3D Reveal forgás
+            const row = document.querySelector(`.cw-row[data-w="${word}"]`);
+            if (row) {
+                row.querySelectorAll('.cw-cell').forEach((c, idx) => {
+                    setTimeout(() => { c.classList.add('revealed', 'do-flip'); }, idx * 80);
+                });
+            }
+
+            if (szSolved.size === data.w.length) {
+                setTimeout(() => {
+                    triggerExplosion(window.innerWidth / 2, 220);
+                    addStars(3);
+                    szLevel++;
+                    if (szLevel > 50) { szLevel = 1; szCycle++; alert("🎉 Gratulálunk! Teljesítetted az 50 pályát! Indul a 2. nehezített ciklus!"); }
+                    localStorage.setItem("robi_sz_lvl", szLevel);
+                    localStorage.setItem("robi_sz_cyc", szCycle);
+                    initSzorolSzora();
+                }, 800);
+            }
+        }
+        document.getElementById('sz-preview').innerText = "HÚZD A BETŰKET";
+        szSelected = [];
+    }
+
+    function useCrosswordHint() {
+        initAudio();
+        const unrev = Array.from(document.querySelectorAll('.cw-cell:not(.revealed)'));
+        if (unrev.length > 0) {
+            const target = unrev[Math.floor(Math.random() * unrev.length)];
+            target.classList.add('revealed', 'do-flip');
+            playTick();
+        }
+    }
+
+    // =========================================================================
+    // 2. ÉS 3. JÁTÉK: IDŐFUTAM KALAND & RELAX CSILLAGVADÁSZ
+    // =========================================================================
+    let questMode = 'idofutam'; // 'idofutam' | 'relax'
+    let questBoard = [];
+    let questTargets = [];
+    let questChain = [];
+    let isQuestDragging = false;
+    let questTimerInt = null;
+    let questTimeLeft = 60;
+    let questMaxTime = 60;
+
+    function initQuestGame(mode) {
+        questMode = mode;
+        if (questTimerInt) clearInterval(questTimerInt);
+
+        document.getElementById('quest-rule-card').innerHTML = (mode === 'idofutam') ?
+            '<strong>📖 Szabályzat (Időfutam):</strong> Kösd össze az érintkező betűket a táblán a megadott szavakért! A szavak <strong>garantáltan szomszédosak</strong>. Minden megtalált szó időbónuszt ad!' :
+            '<strong>📖 Szabályzat (Relax):</strong> Időkorlát nélkül, nyugodtan keresd meg az összeköthető szavakat! Gyűjts csillagokat az 51. felhő-világ eléréséhez!';
+
+        document.getElementById('quest-timer-meter').style.display = (mode === 'idofutam') ? 'block' : 'none';
+
+        // 3 Cél-szó generálása
+        const POOL = [["ALMA", "KERT", "HÁZ"], ["MADÁR", "KAPA", "HAL"], ["VIRÁG", "CSALÁD", "ASZTAL"]];
+        questTargets = [...POOL[Math.floor(Math.random() * POOL.length)]];
+
+        renderQuestTargetPills();
+
+        // Tábla felépítése úgy, hogy a szavak GARANTÁLTAN szomszédosak legyenek!
+        questBoard = Array(6).fill(null).map(() => Array(6).fill(null));
+        const alphabet = "AAAAAAAAAAÁÁBCCCDDEEEEEEEEEEÉÉÉFFGGGHHHIIIIIÍJKKKLLMMMNNNNOOOOOÓÖÖŐPPPRRRRRSSSSSTTTTTUUUUÚÜŰVVZ";
+
+        // Szavak beágyazása egymásba kapcsolódva
+        questTargets.forEach(word => {
+            let r = Math.floor(Math.random() * 6), c = Math.floor(Math.random() * 6);
+            for (let char of word) {
+                questBoard[r][c] = char;
+                const neighbors = [
+                    {r:r-1,c}, {r:r+1,c}, {r,c:c-1}, {r,c:c+1},
+                    {r:r-1,c:c-1}, {r:r+1,c:c+1}, {r:r-1,c:c+1}, {r:r+1,c:c-1}
+                ].filter(n => n.r>=0 && n.r<6 && n.c>=0 && n.c<6);
+                const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                r = next.r; c = next.c;
+            }
+        });
+
+        // Üres helyek feltöltése
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                if (!questBoard[r][c]) questBoard[r][c] = alphabet[Math.floor(Math.random() * alphabet.length)];
+            }
+        }
+
+        renderQuestGrid();
+
+        if (mode === 'idofutam') {
+            questMaxTime = 50; questTimeLeft = questMaxTime;
+            updateQuestTimerUI();
+            questTimerInt = setInterval(() => {
+                questTimeLeft--;
+                updateQuestTimerUI();
+                if (questTimeLeft <= 0) {
+                    clearInterval(questTimerInt);
+                    alert("Lejárt az idő! Próbáld újra!");
+                    initQuestGame(mode);
+                }
+            }, 1000);
+        }
+    }
+
+    function renderQuestTargetPills() {
+        const strip = document.getElementById('quest-target-strip');
+        strip.innerHTML = '<span style="font-weight:bold; color:var(--accent-gold);">Cél szavak:</span>';
+        questTargets.forEach(w => {
+            const p = document.createElement('span'); p.className = 'quest-pill';
+            p.id = `qp-${w}`; p.innerText = w; strip.appendChild(p);
+        });
+    }
+
+    function updateQuestTimerUI() {
+        const fill = document.getElementById('quest-timer-fill');
+        const pct = (questTimeLeft / questMaxTime) * 100;
+        fill.style.width = `${pct}%`;
+        fill.style.backgroundColor = pct > 40 ? '#2ecc71' : (pct > 20 ? '#f39c12' : '#e74c3c');
+    }
+
+    function renderQuestGrid() {
+        const g = document.getElementById('quest-grid');
+        g.innerHTML = '';
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'tile-6x6';
+                cell.innerText = questBoard[r][c];
+                cell.dataset.r = r; cell.dataset.c = c;
+                cell.onpointerdown = () => { isQuestDragging = true; questChain = [{r,c}]; playTick(); updateQuestChainUI(); };
+                cell.onpointerenter = () => {
+                    if (!isQuestDragging) return;
+                    const last = questChain[questChain.length - 1];
+                    if (Math.abs(last.r - r) <= 1 && Math.abs(last.c - c) <= 1 && !questChain.some(i => i.r===r && i.c===c)) {
+                        questChain.push({r,c}); playTick(); updateQuestChainUI();
+                    }
+                };
+                g.appendChild(cell);
+            }
+        }
+    }
+
+    window.addEventListener('pointerup', () => {
+        if (!isQuestDragging) return;
+        isQuestDragging = false;
+        const word = questChain.map(i => questBoard[i.r][i.c]).join('');
+
+        if (questTargets.includes(word)) {
+            playFanfare();
+            addScore(word.length * 20);
+            questTargets = questTargets.filter(w => w !== word);
+            const pill = document.getElementById(`qp-${word}`);
+            if (pill) pill.classList.add('done');
+
+            if (questMode === 'idofutam') {
+                questTimeLeft = Math.min(questMaxTime, questTimeLeft + word.length * 3);
+                updateQuestTimerUI();
+            }
+
+            triggerExplosion(window.innerWidth / 2, 280);
+
+            if (questTargets.length === 0) {
+                if (questTimerInt) clearInterval(questTimerInt);
+                triggerExplosion(window.innerWidth / 2, 280, true);
+                addStars(3);
+                alert("🏆 PÁLYA SIKERESEN TELJESÍTVE!");
+                initQuestGame(questMode);
+            }
+        }
+
+        questChain = [];
+        document.getElementById('quest-preview').innerText = "HÚZZ EGY SZÓT";
+        document.querySelectorAll('.tile-6x6').forEach(t => t.classList.remove('selected', 'selected-valid'));
+    });
+
+    function updateQuestChainUI() {
+        const word = questChain.map(i => questBoard[i.r][i.c]).join('');
+        document.getElementById('quest-preview').innerText = word || "HÚZZ EGY SZÓT";
+        document.querySelectorAll('#quest-grid .tile-6x6').forEach(t => {
+            const r = parseInt(t.dataset.r), c = parseInt(t.dataset.c);
+            const inChain = questChain.some(i => i.r === r && i.c === c);
+            t.classList.remove('selected', 'selected-valid');
+            if (inChain) t.classList.add(questTargets.includes(word) ? 'selected-valid' : 'selected');
+        });
+    }
+
+    function useQuestHint() {
+        initAudio();
+        if (questTargets.length > 0) alert(`💡 SÚGÓ: Keresd ezt a szót a táblán: "${questTargets[0]}"!`);
+    }
+
+    function shuffleQuestBoard() { initAudio(); playTick(); initQuestGame(questMode); }
+
+    // =========================================================================
+    // 4. ÉS 5. JÁTÉK: TAKTIKAI ZUHATAG & SZÓ-BÁNYÁSZ
+    // =========================================================================
+    let zuhGameMode = 'zuhatag';
+    let zuhMat = [];
+    let zuhSelected = [];
+    let isZuhDragging = false;
+
+    function initZuhatagGame(mode) {
+        zuhGameMode = mode;
+        document.getElementById('zuh-rule-card').innerHTML = (mode === 'banyasz') ?
+            '<strong>📖 Szabályzat (Szó-Bányász):</strong> Az alsó sorokban sziklák vannak. Alkoss érvényes szavakat a sziklák mellett, hogy szétzúzd őket és elérd a mélyben rejlő aranykincset!' :
+            '<strong>📖 Szabályzat (Zuhatag Deluxe):</strong> 5+ betűs szóból 💣 <strong>Bomba</strong> lesz! Olvaszd ki a ❄️ <strong>Jégkockákat</strong> dupla pontért! A szavak lezuhannak.';
+
+        zuhMat = [];
+        const alphabet = "AAAAAAAAAAÁÁBCCCDDEEEEEEEEEEÉÉÉFFGGGHHHIIIIIÍJKKKLLMMMNNNNOOOOOÓÖÖŐPPPRRRRRSSSSSTTTTTUUUUÚÜŰVVZ";
+        for (let r = 0; r < 6; r++) {
+            zuhMat[r] = [];
+            for (let c = 0; c < 6; c++) {
+                let type = 'normal';
+                if (mode === 'banyasz' && r >= 4) type = 'rock';
+                else {
+                    const rand = Math.random();
+                    if (rand < 0.05) type = 'ice';
+                    else if (rand < 0.08) type = 'bomb';
+                    else if (rand < 0.11) type = 'gold';
+                }
+                zuhMat[r][c] = { l: alphabet[Math.floor(Math.random() * alphabet.length)], type };
+            }
+        }
+        renderZuhGrid();
+    }
+
+    function renderZuhGrid() {
+        const g = document.getElementById('zuh-grid');
+        g.innerHTML = '';
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'tile-6x6';
+                const d = zuhMat[r][c];
+                if (d.type === 'bomb') cell.classList.add('is-bomb');
+                if (d.type === 'ice') cell.classList.add('is-ice');
+                if (d.type === 'gold') cell.classList.add('is-gold');
+                if (d.type === 'rock') cell.classList.add('is-rock');
+                cell.innerText = d.l;
+
+                cell.onpointerdown = () => { isZuhDragging = true; zuhSelected = [{r,c}]; playTick(); updateZuhUI(); };
+                cell.onpointerenter = () => {
+                    if (!isZuhDragging) return;
+                    const last = zuhSelected[zuhSelected.length - 1];
+                    if (Math.abs(last.r - r) <= 1 && Math.abs(last.c - c) <= 1 && !zuhSelected.some(i => i.r===r && i.c===c)) {
+                        zuhSelected.push({r,c}); playTick(); updateZuhUI();
+                    }
+                };
+                g.appendChild(cell);
+            }
+        }
+    }
+
+    window.addEventListener('pointerup', () => {
+        if (!isZuhDragging) return;
+        isZuhDragging = false;
+        const word = zuhSelected.map(i => zuhMat[i.r][i.c].l).join('');
+
+        if (dictionary.has(word) && word.length >= 2) {
+            let pts = word.length * 15;
+            let hadBomb = zuhSelected.some(i => zuhMat[i.r][i.c].type === 'bomb');
+
+            if (hadBomb) {
+                playBombSound();
+                triggerScreenShake('zuh-board-wrap');
+                triggerExplosion(window.innerWidth / 2, 280, true);
+                // 3x3 robbanás
+                zuhSelected.forEach(i => {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = i.r + dr, nc = i.c + dc;
+                            if (nr>=0 && nr<6 && nc>=0 && nc<6) zuhMat[nr][nc] = null;
+                        }
+                    }
+                });
+            } else {
+                playFanfare();
+                triggerExplosion(window.innerWidth / 2, 280);
+                zuhSelected.forEach(i => zuhMat[i.r][i.c] = null);
+            }
+
+            // Bányász mód sziklazúzás
+            if (zuhGameMode === 'banyasz') {
+                zuhSelected.forEach(i => {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = i.r + dr, nc = i.c + dc;
+                            if (nr>=0 && nr<6 && nc>=0 && nc<6 && zuhMat[nr][nc] && zuhMat[nr][nc].type === 'rock') {
+                                zuhMat[nr][nc].type = 'normal';
+                            }
+                        }
+                    }
+                });
+            }
+
+            addScore(pts);
+
+            // Gravitáció
+            for (let c = 0; c < 6; c++) {
+                let empty = 0;
+                for (let r = 5; r >= 0; r--) {
+                    if (zuhMat[r][c] === null) empty++;
+                    else if (empty > 0) {
+                        zuhMat[r + empty][c] = zuhMat[r][c];
+                        zuhMat[r][c] = null;
+                    }
+                }
+                const alphabet = "AÁBCDEÉFGHIÍJKLMNOÓÖŐPRSTUÚÜŰVZ";
+                for (let r = 0; r < empty; r++) {
+                    zuhMat[r][c] = { l: alphabet[Math.floor(Math.random() * alphabet.length)], type: 'normal' };
+                }
+            }
+            renderZuhGrid();
+        }
+
+        zuhSelected = [];
+        document.getElementById('zuh-preview').innerText = "HÚZZ EGY SZÓT";
+        document.querySelectorAll('#zuh-grid .tile-6x6').forEach(t => t.classList.remove('selected', 'selected-valid'));
+    });
+
+    function updateZuhUI() {
+        const word = zuhSelected.map(i => zuhMat[i.r][i.c].l).join('');
+        document.getElementById('zuh-preview').innerText = word || "HÚZZ EGY SZÓT";
+        document.querySelectorAll('#zuh-grid .tile-6x6').forEach((t, idx) => {
+            const r = Math.floor(idx / 6), c = idx % 6;
+            const inChain = zuhSelected.some(i => i.r === r && i.c === c);
+            t.classList.remove('selected', 'selected-valid');
+            if (inChain) t.classList.add(dictionary.has(word) ? 'selected-valid' : 'selected');
+        });
+    }
+
+    function useZuhatagRadar() {
+        initAudio();
+        alert("💡 RADAR: Keresd a 3-4 betűs szavakat a felső sorokban a zuhatag beindításához!");
+    }
+    function shuffleZuhatag() { initAudio(); playTick(); initZuhatagGame(zuhGameMode); }
+
+    // =========================================================================
+    // 6. JÁTÉK: SZÓBOGOZÓ RUSH (ÖSSZES SZÓVAL MÁS SZÍNNEL)
+    // =========================================================================
+    let rushTime = 60;
+    let rushInt = null;
+    let rushFound = new Set();
+    let rushPool = ["K", "A", "P", "U", "B", "A"];
+
+    function startRushRound() {
+        if (rushInt) clearInterval(rushInt);
+        rushTime = 60; rushFound.clear();
+        document.getElementById('rush-found-list').innerHTML = '';
+        document.getElementById('rush-missed-list').innerHTML = 'Az idő lejárta után ide kerülnek narancssárgával!';
+        document.getElementById('rush-sec').innerText = 60;
+        document.getElementById('rush-count').innerText = 0;
+
+        const POOLS = [["K","A","P","U","B","A"], ["M","A","D","Á","R","K"], ["A","S","Z","T","A","L"]];
+        rushPool = POOLS[Math.floor(Math.random() * POOLS.length)];
+        document.getElementById('rush-letters').innerText = rushPool.join(' ');
+
+        rushInt = setInterval(() => {
+            rushTime--;
+            document.getElementById('rush-sec').innerText = rushTime;
+            if (rushTime <= 0) {
+                clearInterval(rushInt);
+                finishRush();
+            }
+        }, 1000);
+    }
+
+    function handleRushKey(e) {
+        if (e.key === 'Enter') {
+            const input = document.getElementById('rush-input');
+            const val = input.value.trim().toUpperCase();
+
+            let poolCopy = [...rushPool];
+            let canMake = true;
+            for (let char of val) {
+                let idx = poolCopy.indexOf(char);
+                if (idx !== -1) poolCopy.splice(idx, 1);
+                else { canMake = false; break; }
+            }
+
+            if (canMake && dictionary.has(val) && val.length >= 2 && !rushFound.has(val)) {
+                rushFound.add(val);
+                playTick();
+                addScore(val.length * 10);
+                document.getElementById('rush-count').innerText = rushFound.size;
+
+                const item = document.createElement('div');
+                item.style.color = "#2ecc71"; item.style.fontWeight = "bold";
+                item.innerText = `✔ ${val} (+${val.length * 10} pont)`;
+                document.getElementById('rush-found-list').prepend(item);
+            }
+            input.value = '';
+        }
+    }
+
+    function finishRush() {
+        playFanfare();
+        triggerExplosion(window.innerWidth / 2, 260);
+
+        const missedBox = document.getElementById('rush-missed-list');
+        missedBox.innerHTML = '';
+
+        let allPossible = [];
+        dictionary.forEach(word => {
+            if (word.length >= 2 && word.length <= rushPool.length) {
+                let p = [...rushPool], ok = true;
+                for (let c of word) {
+                    let idx = p.indexOf(c);
+                    if (idx !== -1) p.splice(idx, 1); else { ok = false; break; }
+                }
+                if (ok && !rushFound.has(word)) allPossible.push(word);
+            }
+        });
+
+        allPossible.sort((a,b) => b.length - a.length).slice(0, 30).forEach(w => {
+            const tag = document.createElement('span');
+            tag.style.display = 'inline-block'; tag.style.background = 'rgba(230,126,34,0.2)';
+            tag.style.border = '1px solid #e67e22'; tag.style.color = '#f39c12';
+            tag.style.padding = '2px 6px'; tag.style.margin = '2px'; tag.style.borderRadius = '4px';
+            tag.style.fontWeight = 'bold'; tag.innerText = w;
+            missedBox.appendChild(tag);
+        });
+    }
+
+    function useRushHint() {
+        initAudio();
+        for (let word of dictionary) {
+            if (word.length >= 3 && word.length <= rushPool.length && !rushFound.has(word)) {
+                let p = [...rushPool], ok = true;
+                for (let c of word) {
+                    let idx = p.indexOf(c); if (idx !== -1) p.splice(idx, 1); else { ok = false; break; }
+                }
+                if (ok) { alert(`💡 SÚGÓ: Van egy szó, ami így kezdődik: "${word.substring(0, 2)}..." (${word.length} betű)`); return; }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 7. JÁTÉK: SZÓPIRAMIS (1 BETŰ CSERE + IDŐZÍTETT SÚGÓ)
+    // =========================================================================
+    const PYR_CHAINS = [
+        ["HÁZ", "GÁZ", "GÉZ", "KÉZ", "KÉM", "RÉM"],
+        ["KERT", "KÉRT", "KÉRD", "BÉRD", "BÁRD", "BÁRA"]
+    ];
+    let pyrChain = [];
+    let pyrStep = 1;
+    let pyrTimer = 60;
+    let pyrInt = null;
+    let pyrRevealed = 0;
+    let pyrPts = 100;
+
+    function initPyramid() {
+        if (pyrInt) clearInterval(pyrInt);
+        pyrChain = PYR_CHAINS[Math.floor(Math.random() * PYR_CHAINS.length)];
+        pyrStep = 1; pyrRevealed = 0; pyrPts = 100; pyrTimer = 60;
+        renderPyramid();
+
+        document.getElementById('pyr-timer-txt').innerText = pyrTimer;
+        document.getElementById('pyr-pts-txt').innerText = `${pyrPts} pont`;
+
+        pyrInt = setInterval(() => {
+            pyrTimer--;
+            document.getElementById('pyr-timer-txt').innerText = pyrTimer;
+            if (pyrTimer <= 0) {
+                triggerPyramidHint();
+                pyrTimer = 30; // 30 mp-enként újabb betű
+            }
+        }, 1000);
+    }
+
+    function renderPyramid() {
+        const box = document.getElementById('pyr-box');
+        box.innerHTML = '';
+        pyrChain.forEach((word, idx) => {
+            const row = document.createElement('div'); row.className = 'pyr-row';
+            for (let i = 0; i < word.length; i++) {
+                const cell = document.createElement('div');
+                cell.className = `pyr-cell ${idx === pyrStep ? 'active' : (idx < pyrStep ? 'done' : '')}`;
+                if (idx < pyrStep) cell.innerText = word[i];
+                else if (idx === pyrStep) cell.innerText = (i < pyrRevealed) ? word[i] : '?';
+                else cell.innerText = '?';
+                row.appendChild(cell);
+            }
+            box.appendChild(row);
+        });
+    }
+
+    function handlePyramidKey(e) {
+        if (e.key === 'Enter') {
+            const input = document.getElementById('pyr-input');
+            const val = input.value.trim().toUpperCase();
+            const prev = pyrChain[pyrStep - 1];
+
+            let diff = 0;
+            if (val.length === prev.length) {
+                for (let i = 0; i < val.length; i++) if (val[i] !== prev[i]) diff++;
+            }
+
+            if (diff === 1 && (dictionary.has(val) || val === pyrChain[pyrStep])) {
+                playFanfare();
+                addScore(pyrPts);
+                pyrStep++; pyrRevealed = 0; pyrPts = 100; pyrTimer = 60;
+
+                if (pyrStep >= pyrChain.length) {
+                    clearInterval(pyrInt);
+                    triggerExplosion(window.innerWidth / 2, 250);
+                    alert("🏆 ZSENIÁLIS! Felértél a Nagy Szópiramis csúcsára!");
+                    initPyramid();
+                } else {
+                    renderPyramid();
+                }
+            } else {
+                alert("A szónak pontosan 1 betűben kell különböznie az előzőtől!");
+            }
+            input.value = '';
+        }
+    }
+
+    function triggerPyramidHint() {
+        initAudio();
+        const target = pyrChain[pyrStep];
+        if (pyrRevealed < target.length) {
+            pyrRevealed++;
+            pyrPts = Math.max(10, pyrPts - 20);
+            document.getElementById('pyr-pts-txt').innerText = `${pyrPts} pont`;
+            playTick();
+            renderPyramid();
+        }
+    }
+
+    // =========================================================================
+    // 8. JÁTÉK: WORDLE MESTER (3D FORGÁS)
+    // =========================================================================
+    let secretWordle = "KUTYA";
+    let wordleRow = 0;
+
+    function initWordle() {
+        const all5 = Array.from(dictionary).filter(w => w.length === 5);
+        secretWordle = all5.length > 0 ? all5[Math.floor(Math.random() * all5.length)] : "KUTYA";
+        wordleRow = 0;
+        document.getElementById('w-msg').innerText = '';
+
+        const grid = document.getElementById('w-grid');
+        grid.innerHTML = '';
+        for (let r = 0; r < 6; r++) {
+            const row = document.createElement('div'); row.className = 'w-row';
+            for (let c = 0; c < 5; c++) {
+                const b = document.createElement('div'); b.className = 'w-box flip-tile';
+                row.appendChild(b);
+            }
+            grid.appendChild(row);
+        }
+    }
+
+    function handleWordleKey(e) {
+        if (e.key === 'Enter') {
+            const input = document.getElementById('w-input');
+            const val = input.value.trim().toUpperCase();
+            if (val.length !== 5) return alert("Pontosan 5 betűs szót írj!");
+            if (!dictionary.has(val)) return alert("A szó nincs a szótárban!");
+
+            const row = document.querySelectorAll('.w-row')[wordleRow];
+            for (let i = 0; i < 5; i++) {
+                const box = row.children[i];
+                box.innerText = val[i];
+                setTimeout(() => {
+                    box.classList.add('do-flip');
+                    if (val[i] === secretWordle[i]) box.className = 'w-box correct do-flip';
+                    else if (secretWordle.includes(val[i])) box.className = 'w-box present do-flip';
+                    else box.className = 'w-box absent do-flip';
+                }, i * 100);
+            }
+
+            if (val === secretWordle) {
+                playFanfare();
+                triggerExplosion(window.innerWidth / 2, 260);
+                const pts = (6 - wordleRow) * 100;
+                addScore(pts);
+                document.getElementById('w-msg').innerHTML = `<span style="color:#2ecc71;">🎉 Kitaláltad! Nyertél +${pts} pontot!</span>`;
+                setTimeout(initWordle, 3000);
+            } else {
+                wordleRow++;
+                if (wordleRow >= 6) {
+                    document.getElementById('w-msg').innerHTML = `<span style="color:#e74c3c;">Vége! A szó ez volt: ${secretWordle}</span>`;
+                    setTimeout(initWordle, 4000);
+                }
+            }
+            input.value = '';
+        }
+    }
+
+    function useWordleHint() {
+        initAudio();
+        const chars = secretWordle.split('');
+        alert(`💡 SÚGÓ: A szó biztosan tartalmazza ezt a betűt: "${chars[Math.floor(Math.random()*chars.length)]}"!`);
+    }
+
+    // =========================================================================
+    // 9. JÁTÉK: KLASSZIKUS SCRABBLE (15x15)
+    // =========================================================================
+    let scBoard = Array(15).fill(null).map(() => Array(15).fill(null));
+    let scRack = [];
+    let scPlaced = [];
+    let scCursor = null;
+
+    const SC_SPECIALS = {
+        '0,0':'sz3','0,7':'sz3','0,14':'sz3','7,0':'sz3','7,14':'sz3','14,0':'sz3','14,7':'sz3','14,14':'sz3',
+        '1,1':'sz2','2,2':'sz2','3,3':'sz2','4,4':'sz2','10,10':'sz2','11,11':'sz2','12,12':'sz2','13,13':'sz2',
+        '1,5':'b3','1,9':'b3','5,1':'b3','5,5':'b3','5,9':'b3','5,13':'b3','9,1':'b3','9,5':'b3','9,9':'b3','9,13':'b3',
+        '0,3':'b2','0,11':'b2','2,6':'b2','2,8':'b2','3,0':'b2','3,7':'b2','3,14':'b2','6,2':'b2','6,6':'b2','6,8':'b2',
+        '7,7':'star'
+    };
+    const SC_SCORES = {
+        'A': 1, 'E': 1, 'I': 1, 'L': 1, 'M': 1, 'N': 1, 'O': 1, 'R': 1, 'S': 1, 'T': 1,
+        'Á': 1, 'É': 3, 'K': 1, 'P': 2, 'U': 4, 'V': 3, 'B': 2, 'D': 2, 'G': 2, 'Ó': 2,
+        'Ö': 4, 'Z': 4, 'C': 5, 'H': 3, 'J': 4, 'Ő': 7, 'Ú': 7, 'Ü': 4, 'Ű': 7, 'F': 7
+    };
+
+    function initScrabble() {
+        const b = document.getElementById('sc-board');
+        b.innerHTML = '';
+        for (let r = 0; r < 15; r++) {
+            for (let c = 0; c < 15; c++) {
+                const cell = document.createElement('div'); cell.className = 'sc-c';
+                const sp = SC_SPECIALS[`${r},${c}`];
+                if (sp) {
+                    cell.classList.add(sp);
+                    cell.innerText = sp === 'sz3'?'3SZ':(sp==='sz2'?'2SZ':(sp==='b3'?'3B':(sp==='b2'?'2B':'★')));
+                }
+                cell.onclick = () => onScCellClick(r, c);
+                b.appendChild(cell);
+            }
+        }
+        refillScRack();
+    }
+
+    function onScCellClick(r, c) {
+        if (scBoard[r][c] === null) {
+            playTick();
+            if (scCursor && scCursor.r === r && scCursor.c === c) scCursor.dir = scCursor.dir === 'H' ? 'V' : 'H';
+            else scCursor = { r, c, dir: 'H' };
+            updateScCursor();
+        }
+    }
+
+    function updateScCursor() {
+        document.querySelectorAll('.sc-c').forEach(c => { c.classList.remove('cursor-active'); c.removeAttribute('data-arrow'); });
+        if (scCursor && scBoard[scCursor.r][scCursor.c] === null) {
+            const idx = scCursor.r * 15 + scCursor.c;
+            const target = document.getElementById('sc-board').children[idx];
+            target.classList.add('cursor-active');
+            target.setAttribute('data-arrow', scCursor.dir === 'H' ? '➡️' : '⬇️');
+        }
+    }
+
+    function refillScRack() {
+        const letters = Object.keys(SC_SCORES);
+        while (scRack.length < 7) scRack.push(letters[Math.floor(Math.random() * letters.length)]);
+        renderScRack();
+    }
+
+    function renderScRack() {
+        const r = document.getElementById('sc-rack');
+        r.innerHTML = '';
+        scRack.forEach((l, idx) => {
+            if (!l) return;
+            const t = document.createElement('div'); t.className = 'sc-tile';
+            t.innerHTML = `${l}<span class="p">${SC_SCORES[l]}</span>`;
+            t.onclick = () => {
+                if (scCursor && scBoard[scCursor.r][scCursor.c] === null) {
+                    scBoard[scCursor.r][scCursor.c] = l;
+                    scPlaced.push({ r: scCursor.r, c: scCursor.c, l, idx });
+                    scRack[idx] = null;
+                    playTick();
+                    renderScBoard(); renderScRack();
+                    // Léptetés
+                    if (scCursor.dir === 'H') scCursor.c = Math.min(14, scCursor.c + 1);
+                    else scCursor.r = Math.min(14, scCursor.r + 1);
+                    updateScCursor();
+                }
+            };
+            r.appendChild(t);
+        });
+    }
+
+    function renderScBoard() {
+        document.querySelectorAll('.sc-c').forEach((cell, idx) => {
+            const r = Math.floor(idx / 15), c = idx % 15;
+            const l = scBoard[r][c];
+            if (l) cell.innerHTML = `<div style="width:90%; height:90%; background:#fffbf0; color:#2c1809; border-radius:3px; font-weight:bold; display:flex; align-items:center; justify-content:center;">${l}</div>`;
+            else {
+                const sp = SC_SPECIALS[`${r},${c}`];
+                cell.innerText = sp ? (sp === 'star' ? '★' : sp.toUpperCase()) : '';
+            }
+        });
+    }
+
+    function commitScrabble() {
+        if (scPlaced.length === 0) return;
+        const word = scPlaced.map(p => p.l).join('');
+        if (dictionary.has(word) || word.length >= 2) {
+            playFanfare();
+            addScore(word.length * 15);
+            document.getElementById('sc-msg').innerText = `Helyes szó: ${word}! (+${word.length * 15} pont)`;
+            scRack = scRack.filter(Boolean);
+            refillScRack();
+            scPlaced = []; scCursor = null; updateScCursor();
+        } else {
+            alert(`A "${word}" nincs a szótárban!`);
+            recallScrabble();
+        }
+    }
+
+    function recallScrabble() {
+        scPlaced.forEach(p => { scBoard[p.r][p.c] = null; scRack[p.idx] = p.l; });
+        scPlaced = []; renderScBoard(); renderScRack();
+    }
+
+    function useScrabbleHint() {
+        initAudio();
+        const av = scRack.filter(Boolean);
+        for (let w of dictionary) {
+            if (w.length >= 3 && w.length <= av.length) {
+                let p = [...av], ok = true;
+                for (let c of w) {
+                    let idx = p.indexOf(c); if (idx !== -1) p.splice(idx, 1); else { ok = false; break; }
+                }
+                if (ok) { alert(`💡 SÚGÓ: A tartódból kirakható: "${w}"!`); return; }
+            }
+        }
+        alert("A betűidből nem találtam hosszú szót, próbálj újakat húzni!");
+    }
+
+    // =========================================================================
+    // SZÓTÁRAK ASZINKRON BETÖLTÉSE
+    // =========================================================================
+    async function loadAllDictionaries() {
+        const statusEl = document.getElementById('stat-words');
+        const fetchPromises = DICTIONARY_URLS.map(url =>
+            fetch(url).then(r => r.text()).then(txt => {
+                txt.split(/\r?\n/).forEach(w => {
+                    const clean = w.split('/')[0].trim().toUpperCase();
+                    if (clean.length >= 2 && clean.length <= 15 && /^[A-ZÁÉÍÓÖŐÚÜŰ]+$/.test(clean)) {
+                        dictionary.add(clean);
+                    }
+                });
+            }).catch(e => console.warn(e))
+        );
+
+        const match = MY_GOOGLE_SHEET_URL.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (match) {
+            const sheetUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/gviz/tq?tqx=out:csv&t=${Date.now()}`;
+            fetchPromises.push(
+                fetch(sheetUrl).then(r => r.text()).then(csv => {
+                    csv.split(/\r?\n/).forEach(row => {
+                        const clean = row.replace(/["']/g, "").trim().toUpperCase();
+                        if (clean.length >= 2) dictionary.add(clean);
+                    });
+                }).catch(e => console.warn(e))
+            );
+        }
+
+        await Promise.all(fetchPromises);
+        statusEl.innerText = `${dictionary.size.toLocaleString('hu-HU')} szó`;
+    }
+
+    window.onload = () => {
+        document.getElementById('stat-global-score').innerText = globalScore;
+        document.getElementById('stat-stars').innerText = `${totalStars} / 150`;
+        loadAllDictionaries();
+    };
+</script>
+</body>
+</html>
